@@ -65,8 +65,8 @@ df <- sp_pe %>% left_join(sp_value) %>%
 
 colnames(df) <- c("date", "pe_ratio", "sp_500")
 
-
-manudir = 5 * 12
+ar = 10
+manudir = ar * 12
 
 df_filt <- df %>%
         mutate(sp_return = lead(sp_500, manudir)/sp_500 - 1) %>%
@@ -83,21 +83,68 @@ ggplot(df_filt,
         geom_smooth(aes(col = timabil),
                     se = FALSE,
                     method = "lm") +
-        geom_smooth(method = "lm", col = "black", lwd = 1.5, linetype = "dashed") +
+        geom_smooth(span = 0.8, method = "loess", col = "darkblue", lwd = 1.5, linetype = "dashed") +
         labs(x = "Schiller PE Ratio",
              y = paste("Ávöxtun næstu", manudir, "mánaða")) +
         geom_vline(xintercept = tail(df$pe_ratio, 1)) +
-        ggthemes::scale_color_tableau()
+        ggthemes::scale_color_tableau() +
+        theme(legend.position = "bottom")
 
 
 ggplot(df_filt,
        aes(x = pe_ratio,
-           y = sp_return,
-           fill = timabil)) +
-        geom_boxplot()
+           y = sp_return)) +
+        geom_point() +
+        geom_smooth(method = "lm") +
+        geom_vline(xintercept = tail(df$pe_ratio, 1), linetype = "dashed", col = "red", lwd = 1) +
+        ggthemes::scale_color_tableau() +
+        labs(x = "Shiller PE Ratio",
+             y = "Ávöxtun næstu 60 mánaða") +
+        scale_y_continuous(labels = scales::percent)
 
 
-df_filt %>%
-        select(date, pe_ratio, sp_return) %>%
-        pivot_longer(cols = pe_ratio:sp_return,
-                     names_t)
+
+# Tímabil með hærra gildi en nú -------------------------------------------
+
+df_high <- df %>%
+        mutate(sp_return = lead(sp_500, manudir)/sp_500 - 1) %>%
+        filter(pe_ratio >= tail(df$pe_ratio, 1)) %>%
+        na.omit()
+
+df_high %>%
+        ggplot(aes(x = sp_return)) + geom_histogram(fill = "darkblue") + ggthemes::scale_fill_canva()
+
+
+sp_list <- list()
+
+for(i in 1:100000) {
+        urtak = sample(df_high$sp_return, nrow(df_high), replace = TRUE)
+        medaltal <- mean(urtak)
+        sp_list[[i]] <- medaltal
+}
+
+sp_unlist <- tibble(avoxtun = unlist(sp_list))
+
+
+ggplot(sp_unlist,
+       aes(x = avoxtun)) +
+        geom_histogram(fill = "darkblue",
+                       col = "white",
+                       binwidth = 0.001)
+
+g_ecdf <- ggplot(sp_unlist,
+       aes(x = avoxtun)) +
+        stat_ecdf(geom = "line") +
+        labs(x = "Ávöxtun",
+             y = "cumulative frequency")
+
+plotly::ggplotly(g_ecdf)
+
+
+
+# Bayes -------------------------------------------------------------------
+
+library(bayestestR)
+
+
+interv <- ci(sp_unlist$avoxtun, ci = 0.90)
